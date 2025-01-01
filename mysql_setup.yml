@@ -1,0 +1,41 @@
+---
+- name: Set up MySQL on EC2
+  hosts: ec2
+  become: true
+  tasks:
+    - name: Update and upgrade packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+    - name: Install MySQL server
+      apt:
+        name: mysql-server
+        state: present
+
+    - name: Enable and start MySQL service
+      service:
+        name: mysql
+        state: started
+        enabled: yes
+
+    - name: Allow external connections to MySQL
+      lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        regexp: "^bind-address"
+        line: "bind-address = 0.0.0.0"
+        state: present
+
+    - name: Restart MySQL
+      service:
+        name: mysql
+        state: restarted
+
+    - name: Create MySQL database and user
+      mysql_db:
+        name: mydb
+      mysql_user:
+        name: myuser
+        password: mypassword
+        priv: "mydb.*:ALL"
+        host: "%"

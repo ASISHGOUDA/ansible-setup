@@ -1,0 +1,58 @@
+---
+- name: Set up PostgreSQL on EC2
+  hosts: ec2
+  become: true
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  tasks:
+    - name: Update and upgrade packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+    - name: Install PostgreSQL
+      apt:
+        name:
+          - postgresql
+          - postgresql-contrib
+        state: present
+
+    - name: Enable and start PostgreSQL service
+      service:
+        name: postgresql
+        state: started
+        enabled: yes
+
+    - name: Configure PostgreSQL to allow external connections
+      lineinfile:
+        path: /etc/postgresql/16/main/postgresql.conf
+        regexp: "^#?listen_addresses"
+        line: "listen_addresses = '*'"
+        state: present
+      vars:
+        postgresql_version: "16" # Update to your PostgreSQL version
+
+    - name: Add host-based authentication
+      lineinfile:
+        path: /etc/postgresql/16/main/pg_hba.conf
+        line: "host    all             all             0.0.0.0/0            md5"
+        state: present
+
+    - name: Restart PostgreSQL
+      service:
+        name: postgresql
+        state: restarted
+
+    - name: Create PostgreSQL database
+      postgresql_db:
+        name: mydb
+        state: present
+
+    - name: Create PostgreSQL user
+      postgresql_user:
+        name: myuser
+        password: mypassword
+        db: mydb
+        priv: "ALL"
+        login_user: postgres
+        login_password: test_password
