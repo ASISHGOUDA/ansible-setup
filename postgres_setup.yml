@@ -4,17 +4,21 @@
   become: true
   vars:
     ansible_python_interpreter: /usr/bin/python3
+    postgresql_version: "16" # Update to match your PostgreSQL version
+    postgres_login_user: postgres
+    postgres_login_password: postgres_password # Replace with a secure password
   tasks:
     - name: Update and upgrade packages
       apt:
         update_cache: yes
         upgrade: dist
 
-    - name: Install PostgreSQL
+    - name: Install required packages
       apt:
         name:
           - postgresql
           - postgresql-contrib
+          - python3-psycopg2
         state: present
 
     - name: Enable and start PostgreSQL service
@@ -25,34 +29,47 @@
 
     - name: Configure PostgreSQL to allow external connections
       lineinfile:
-        path: /etc/postgresql/16/main/postgresql.conf
+        path: /etc/postgresql/{{ postgresql_version }}/main/postgresql.conf
         regexp: "^#?listen_addresses"
         line: "listen_addresses = '*'"
         state: present
-      vars:
-        postgresql_version: "16" # Update to your PostgreSQL version
 
-    - name: Add host-based authentication
+    - name: Update authentication method for postgres user to md5
       lineinfile:
-        path: /etc/postgresql/16/main/pg_hba.conf
+        path: /etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf
+        regexp: '^local\s+all\s+postgres\s+peer'
+        line: "local   all             postgres                                md5"
+        state: present
+
+    - name: Add host-based authentication for all users
+      lineinfile:
+        path: /etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf
         line: "host    all             all             0.0.0.0/0            md5"
         state: present
 
-    - name: Restart PostgreSQL
+    - name: Restart PostgreSQL to apply configuration changes
       service:
         name: postgresql
         state: restarted
+
+    - name: Set password for the postgres user
+      shell: |
+        sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD '{{ postgres_login_password }}';"
 
     - name: Create PostgreSQL database
       postgresql_db:
         name: mydb
         state: present
+        login_user: "{{ postgres_login_user }}"
+        login_password: "{{ postgres_login_password }}"
 
-    - name: Create PostgreSQL user
+    - name: Create PostgreSQL user with permissions
       postgresql_user:
         name: myuser
         password: mypassword
         db: mydb
-        priv: "ALL"
-        login_user: postgres
-        login_password: test_password
+        priv: ALL
+        role_attr_flags: LOGIN
+        state: present
+        login_user: "{{ postgres_login_user }}"
+        login_password: "{{ postgres_login_password }}"

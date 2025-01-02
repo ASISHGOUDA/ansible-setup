@@ -2,6 +2,12 @@
 - name: Set up MySQL on EC2
   hosts: ec2
   become: true
+  vars:
+    mysql_root_password: "root_password" # Replace with a secure root password
+    mysql_user_name: "myuser"
+    mysql_user_password: "mypassword"
+    mysql_database_name: "mydb"
+
   tasks:
     - name: Update and upgrade packages
       apt:
@@ -19,6 +25,18 @@
         state: started
         enabled: yes
 
+    - name: Install Python MySQL module
+      apt:
+        name: python3-pymysql
+        state: present
+
+    - name: Configure MySQL root authentication
+      shell: |
+        sudo mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH 'mysql_native_password' BY '{{ mysql_root_password }}';"
+        sudo mysql -e "FLUSH PRIVILEGES;"
+      args:
+        executable: /bin/bash
+
     - name: Allow external connections to MySQL
       lineinfile:
         path: /etc/mysql/mysql.conf.d/mysqld.cnf
@@ -26,16 +44,32 @@
         line: "bind-address = 0.0.0.0"
         state: present
 
-    - name: Restart MySQL
+    - name: Restart MySQL service to apply configuration
       service:
         name: mysql
         state: restarted
 
-    - name: Create MySQL database and user
+    - name: Secure MySQL installation (remove anonymous users and test DB)
+      shell: |
+        mysql -u root -p{{ mysql_root_password }} -e "DELETE FROM mysql.user WHERE User='';"
+        mysql -u root -p{{ mysql_root_password }} -e "DROP DATABASE IF EXISTS test;"
+        mysql -u root -p{{ mysql_root_password }} -e "FLUSH PRIVILEGES;"
+      args:
+        executable: /bin/bash
+
+    - name: Create MySQL database
       mysql_db:
-        name: mydb
+        name: "{{ mysql_database_name }}"
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+
+    - name: Create MySQL user and grant permissions
       mysql_user:
-        name: myuser
-        password: mypassword
-        priv: "mydb.*:ALL"
+        name: "{{ mysql_user_name }}"
+        password: "{{ mysql_user_password }}"
+        priv: "{{ mysql_database_name }}.*:ALL"
         host: "%"
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
